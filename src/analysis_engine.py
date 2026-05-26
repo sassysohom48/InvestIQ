@@ -44,17 +44,52 @@ def apply_indicators(df: pd.DataFrame) -> Optional[pd.DataFrame]:
 
 
 def generate_signal(df: pd.DataFrame) -> str:
-    if not isinstance(df, pd.DataFrame) or df.empty or "rsi_14" not in df.columns:
+    required = {"rsi_14", "macd", "macd_signal", "sma_20", "sma_50", "close"}
+    if not isinstance(df, pd.DataFrame) or df.empty or not required.issubset(df.columns):
         return "HOLD"
 
-    latest_rsi = df["rsi_14"].dropna()
-    if latest_rsi.empty:
+    clean = df.dropna(subset=list(required))
+    if len(clean) < 2:
         return "HOLD"
 
-    value = float(latest_rsi.iloc[-1])
-    if value < 30:
+    row = clean.iloc[-1]
+    prev = clean.iloc[-2]
+
+    rsi = float(row["rsi_14"])
+    macd = float(row["macd"])
+    macd_sig = float(row["macd_signal"])
+    prev_macd = float(prev["macd"])
+    prev_macd_sig = float(prev["macd_signal"])
+    sma20 = float(row["sma_20"])
+    sma50 = float(row["sma_50"])
+    close = float(row["close"])
+
+    bullish_score = 0
+    bearish_score = 0
+
+    # Momentum regime
+    if rsi <= 45:
+        bullish_score += 1
+    elif rsi >= 55:
+        bearish_score += 1
+
+    # MACD crossover regime
+    macd_cross_up = prev_macd <= prev_macd_sig and macd > macd_sig
+    macd_cross_down = prev_macd >= prev_macd_sig and macd < macd_sig
+    if macd_cross_up or macd > macd_sig:
+        bullish_score += 1
+    if macd_cross_down or macd < macd_sig:
+        bearish_score += 1
+
+    # Trend regime
+    if sma20 > sma50 and close >= sma20:
+        bullish_score += 1
+    if sma20 < sma50 and close <= sma20:
+        bearish_score += 1
+
+    if bullish_score >= 2 and bullish_score > bearish_score:
         return "BUY"
-    if value > 70:
+    if bearish_score >= 2 and bearish_score > bullish_score:
         return "SELL"
     return "HOLD"
 
@@ -96,19 +131,29 @@ def predict_price(
         return None
 
     close = df["close"].astype(float).copy()
+    if len(close) < 25:
+        return None
+
+    # Adapt feature windows for shorter history windows (e.g., 1mo)
+    w_sma_fast = 5 if len(close) < 60 else 10
+    w_sma_slow = 10 if len(close) < 60 else 20
+    w_mom = 3 if len(close) < 60 else 5
+    w_vol = 5 if len(close) < 60 else 10
+
     feat = pd.DataFrame(index=close.index)
     feat["close"] = close
-    feat["sma_10"] = close.rolling(10).mean()
-    feat["sma_20"] = close.rolling(20).mean()
-    feat["momentum_5"] = close.pct_change(5)
-    feat["volatility_10"] = close.pct_change().rolling(10).std()
+    feat["sma_fast"] = close.rolling(w_sma_fast).mean()
+    feat["sma_slow"] = close.rolling(w_sma_slow).mean()
+    feat["momentum"] = close.pct_change(w_mom)
+    feat["volatility"] = close.pct_change().rolling(w_vol).std()
     feat["target"] = close.shift(-1)
     feat = feat.dropna()
 
-    if len(feat) < max(40, lookback):
+    min_required = 18 if len(close) < 60 else max(40, lookback)
+    if len(feat) < min_required:
         return None
 
-    X = feat[["close", "sma_10", "sma_20", "momentum_5", "volatility_10"]]
+    X = feat[["close", "sma_fast", "sma_slow", "momentum", "volatility"]]
     y = feat["target"]
 
     split_idx = int(len(feat) * (1 - test_size))
@@ -125,16 +170,15 @@ def predict_price(
     y_pred_test = model.predict(X_test)
     mae = float(mean_absolute_error(y_test, y_pred_test))
 
-    latest_close = close.iloc[-lookback:]
-    if len(latest_close) < lookback:
-        return None
+    effective_lookback = min(lookback, len(close))
+    latest_close = close.iloc[-effective_lookback:]
 
     latest_frame = pd.DataFrame(index=latest_close.index)
     latest_frame["close"] = latest_close
-    latest_frame["sma_10"] = latest_close.rolling(10).mean()
-    latest_frame["sma_20"] = latest_close.rolling(20).mean()
-    latest_frame["momentum_5"] = latest_close.pct_change(5)
-    latest_frame["volatility_10"] = latest_close.pct_change().rolling(10).std()
+    latest_frame["sma_fast"] = latest_close.rolling(w_sma_fast).mean()
+    latest_frame["sma_slow"] = latest_close.rolling(w_sma_slow).mean()
+    latest_frame["momentum"] = latest_close.pct_change(w_mom)
+    latest_frame["volatility"] = latest_close.pct_change().rolling(w_vol).std()
     latest_row = latest_frame.dropna().iloc[[-1]]
     if latest_row.empty:
         return None

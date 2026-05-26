@@ -25,9 +25,36 @@ def test_apply_indicators_and_signal() -> None:
 
 
 def test_signal_rule_boundaries() -> None:
-    buy_df = pd.DataFrame({"rsi_14": [25.0]})
-    sell_df = pd.DataFrame({"rsi_14": [75.0]})
-    hold_df = pd.DataFrame({"rsi_14": [50.0]})
+    buy_df = pd.DataFrame(
+        {
+            "close": [100.0, 102.0],
+            "rsi_14": [45.0, 35.0],
+            "macd": [-0.2, 0.4],
+            "macd_signal": [-0.1, 0.1],
+            "sma_20": [99.0, 101.0],
+            "sma_50": [100.0, 100.0],
+        }
+    )
+    sell_df = pd.DataFrame(
+        {
+            "close": [102.0, 100.0],
+            "rsi_14": [55.0, 65.0],
+            "macd": [0.3, -0.3],
+            "macd_signal": [0.2, 0.0],
+            "sma_20": [101.0, 99.0],
+            "sma_50": [100.0, 100.0],
+        }
+    )
+    hold_df = pd.DataFrame(
+        {
+            "close": [100.0, 100.5],
+            "rsi_14": [50.0, 50.0],
+            "macd": [0.1, 0.1],
+            "macd_signal": [0.1, 0.1],
+            "sma_20": [100.0, 100.0],
+            "sma_50": [100.0, 100.0],
+        }
+    )
     assert generate_signal(buy_df) == "BUY"
     assert generate_signal(sell_df) == "SELL"
     assert generate_signal(hold_df) == "HOLD"

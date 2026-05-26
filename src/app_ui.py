@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime
+from io import StringIO
+
 import pandas as pd
 import plotly.graph_objects as go
+import requests
 import streamlit as st
+from zoneinfo import ZoneInfo
 
 from src.analysis_engine import (
     apply_indicators,
@@ -15,9 +20,12 @@ from src.data_engine import get_stock_data
 from src.portfolio_manager import add_trade, get_holdings, get_portfolio_value, remove_trade
 
 
-st.set_page_config(page_title="OpenTrade Analytics", layout="wide")
-st.title("OpenTrade Analytics")
-st.caption("NSE-focused analytics dashboard (Phase 5 MVP)")
+st.set_page_config(page_title="InvestIQ", layout="wide")
+st.title("InvestIQ")
+st.caption("NSE-focused analytics dashboard")
+st.info(
+    "Market data is near real-time and typically delayed by the upstream source (usually minutes, not tick-by-tick live)."
+)
 
 
 def _signal_color(signal: str) -> str:
@@ -51,9 +59,95 @@ def _render_candles(df: pd.DataFrame, symbol: str) -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
+def _render_quote_strip(df: pd.DataFrame, symbol: str) -> None:
+    latest = df.iloc[-1]
+    latest_close = float(latest["close"])
+    latest_open = float(latest["open"])
+    latest_high = float(latest["high"])
+    latest_low = float(latest["low"])
+
+    if len(df) > 1:
+        prev_close = float(df["close"].iloc[-2])
+    else:
+        prev_close = latest_close
+
+    change = latest_close - prev_close
+    change_pct = (change / prev_close * 100.0) if prev_close != 0 else 0.0
+    up = change >= 0
+    color = "#15803d" if up else "#b91c1c"
+    arrow = "▲" if up else "▼"
+    now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+    ts_ist = now_ist.strftime("%d-%b-%Y %I:%M:%S %p IST")
+
+    # NSE equity regular session (approx): 09:15 to 15:30 IST, Mon-Fri.
+    # This is a practical local rule and may differ on special sessions/holidays.
+    in_week = now_ist.weekday() < 5
+    hhmm = now_ist.hour * 60 + now_ist.minute
+    market_open = 9 * 60 + 15
+    market_close = 15 * 60 + 30
+    is_open_session = in_week and (market_open <= hhmm <= market_close)
+    session_label = "Open" if is_open_session else "Market Day Closed"
+    session_color = "#15803d" if is_open_session else "#b91c1c"
+
+    st.markdown(
+        f"""
+        <div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin-bottom:12px;background:#f8fafc;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div style="font-size:1.65rem;font-weight:700;color:#0f172a;">{symbol.upper()} (EQ)</div>
+            <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+              <div style="font-size:0.95rem;color:#334155;">As on {ts_ist} (all prices in ₹)</div>
+              <div style="font-size:0.95rem;font-weight:700;color:{session_color};">Session: {session_label}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-top:4px;">
+            <div style="font-size:2.2rem;font-weight:700;color:#0f172a;">₹{latest_close:,.2f}</div>
+            <div style="font-size:1.8rem;font-weight:700;color:{color};">{arrow}</div>
+            <div style="font-size:2rem;font-weight:700;color:{color};">{change:,.2f} ({change_pct:,.2f}%)</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    q1, q2, q3, q4, q5 = st.columns(5)
+    q1.metric("Prev Close", f"{prev_close:,.2f}")
+    q2.metric("Open", f"{latest_open:,.2f}")
+    q3.metric("High", f"{latest_high:,.2f}")
+    q4.metric("Low", f"{latest_low:,.2f}")
+    if is_open_session:
+        q5.metric("Official Close", "-")
+    else:
+        q5.metric("Official Close", f"{latest_close:,.2f}", f"{change:,.2f} ({change_pct:,.2f}%)")
+
+
+@st.cache_data(ttl=60 * 60 * 12)
+def _load_nse_symbol_master() -> pd.DataFrame:
+    url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
+    response = requests.get(url, timeout=30)
+    response.raise_for_status()
+    raw = pd.read_csv(StringIO(response.text))
+    raw.columns = [str(c).strip().upper() for c in raw.columns]
+    if "SYMBOL" not in raw.columns or "NAME OF COMPANY" not in raw.columns:
+        raise ValueError("Unexpected NSE symbol master format")
+    out = raw[["SYMBOL", "NAME OF COMPANY"]].copy()
+    out["SYMBOL"] = out["SYMBOL"].astype(str).str.strip().str.upper()
+    out["NAME OF COMPANY"] = out["NAME OF COMPANY"].astype(str).str.strip()
+    out = out.drop_duplicates(subset=["SYMBOL"]).sort_values("SYMBOL").reset_index(drop=True)
+    return out
+
+
 with st.sidebar:
     st.header("Controls")
-    symbol_input = st.text_input("Stock Symbol (NSE)", value="RELIANCE")
+    try:
+        nse_master = _load_nse_symbol_master()
+        symbols = nse_master["SYMBOL"].tolist()
+        default_idx = symbols.index("RELIANCE") if "RELIANCE" in symbols else 0
+        symbol_input = st.selectbox("Stock Symbol (NSE)", symbols, index=default_idx)
+        company_name = nse_master.loc[nse_master["SYMBOL"] == symbol_input, "NAME OF COMPANY"].iloc[0]
+        st.caption(f"Company: {company_name}")
+    except Exception:
+        st.warning("Could not load full NSE list right now; using manual symbol input fallback.")
+        symbol_input = st.text_input("Stock Symbol (NSE)", value="RELIANCE")
     period = st.selectbox("Period", ["1mo", "3mo", "6mo", "1y", "2y"], index=1)
     risk_pct = st.slider("Risk % per trade", 0.5, 5.0, 2.0, 0.5)
     capital = st.number_input("Capital", min_value=1000.0, value=100000.0, step=1000.0)
@@ -67,6 +161,7 @@ with tab_market:
     if df is None or df.empty:
         st.error("Could not fetch stock data. Please check the symbol and try again.")
     else:
+        _render_quote_strip(df, symbol_input)
         enriched = apply_indicators(df)
         if enriched is None:
             st.error("Could not compute indicators.")
@@ -96,6 +191,7 @@ with tab_market:
             else:
                 c3.metric("Predicted Next Close", "N/A")
                 c4.metric("Model MAE", "N/A")
+                st.caption("Prediction may be unavailable when selected period has too few rows.")
 
             st.subheader("Position Sizing")
             s1, s2, s3 = st.columns(3)
@@ -113,7 +209,8 @@ with tab_portfolio:
 
     st.subheader("Add Trade")
     with st.form("add_trade_form"):
-        a_symbol = st.text_input("Symbol", value="RELIANCE", key="add_symbol")
+        a_symbol = st.text_input("Symbol", value=symbol_input, key="add_symbol")
+        st.caption(f"Using current selected symbol by default: {symbol_input}")
         a_qty = st.number_input("Quantity", min_value=1, value=10, step=1, key="add_qty")
         a_price = st.number_input("Buy Price", min_value=0.01, value=1000.0, step=0.5, key="add_price")
         add_submit = st.form_submit_button("Add Trade")
@@ -150,12 +247,18 @@ with tab_portfolio:
 with tab_backtest:
     st.subheader("SMA Crossover Backtest")
     st.caption("Strategy: Buy when SMA20 > SMA50, stay in cash otherwise.")
+    st.caption("Backtest uses completed daily candles only (intraday partial session excluded while market is open).")
 
     bt_df = get_stock_data(symbol_input, period="2y")
     if bt_df is None or bt_df.empty:
         st.error("Could not fetch 2-year data for backtest.")
     else:
-        bt_result = run_sma_crossover_backtest(bt_df, short_window=20, long_window=50)
+        bt_result = run_sma_crossover_backtest(
+            bt_df,
+            short_window=20,
+            long_window=50,
+            drop_incomplete_last_candle=True,
+        )
         if bt_result is None:
             st.error("Could not run backtest on current data.")
         else:
