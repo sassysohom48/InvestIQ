@@ -301,6 +301,7 @@ def login_screen():
                         st.session_state["username"] = user["username"]
                         st.session_state["email"] = user["email"]
                         st.session_state["role"] = user["role"]
+                        st.session_state["ui_theme"] = user.get("ui_theme", "Sunset Glow (Light)")
                         cookie_controller.set("investiq_session", user["username"], max_age=86400*30)
                         st.success("Login Successful! Initializing dashboard...")
                         st.components.v1.html("<script>setTimeout(function() { window.parent.location.reload(); }, 1000);</script>", height=0)
@@ -370,6 +371,7 @@ if "user_id" not in st.session_state:
             st.session_state["username"] = user["username"]
             st.session_state["email"] = user["email"]
             st.session_state["role"] = user["role"]
+            st.session_state["ui_theme"] = user.get("ui_theme", "Sunset Glow (Light)")
             st.rerun()
 
 if "user_id" not in st.session_state:
@@ -1276,4 +1278,6 @@ elif st.session_state["current_page"] == "settings":
     )
     if selected_theme != st.session_state.get("ui_theme"):
         st.session_state["ui_theme"] = selected_theme
+        from src.portfolio_manager import update_user_theme
+        update_user_theme(st.session_state["user_id"], selected_theme)
         st.rerun()

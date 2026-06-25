@@ -43,6 +43,10 @@ def init_db(db_path: str | Path = DEFAULT_DB_PATH) -> None:
             cur.execute("ALTER TABLE users ADD COLUMN email TEXT")
         except sqlite3.OperationalError:
             pass
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN ui_theme TEXT DEFAULT 'Sunset Glow (Light)'")
+        except sqlite3.OperationalError:
+            pass
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS holdings (
@@ -98,12 +102,12 @@ def verify_user(username: str, password: str, db_path: str | Path = DEFAULT_DB_P
     with _connect(db_path) as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, username, email, role FROM users WHERE username = ? AND password_hash = ?",
+            "SELECT id, username, email, role, ui_theme FROM users WHERE username = ? AND password_hash = ?",
             (username, hash_password(password))
         )
         row = cur.fetchone()
         if row:
-            return {"id": row[0], "username": row[1], "email": row[2], "role": row[3]}
+            return {"id": row[0], "username": row[1], "email": row[2], "role": row[3], "ui_theme": row[4] or "Sunset Glow (Light)"}
     return None
 
 def get_all_users(db_path: str | Path = DEFAULT_DB_PATH) -> List[Dict[str, object]]:
@@ -253,7 +257,7 @@ def get_user_by_username(username: str, db_path: str | Path = DEFAULT_DB_PATH) -
     with _connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
-        cur.execute("SELECT id, username, email, role FROM users WHERE username = ?", (username,))
+        cur.execute("SELECT id, username, email, role, ui_theme FROM users WHERE username = ?", (username,))
         row = cur.fetchone()
         return dict(row) if row else None
 
