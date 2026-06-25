@@ -167,6 +167,11 @@ def predict_price(
         if vwap is not None and not vwap.empty:
             feat["vwap"] = vwap
 
+    # Extract the very last row for live prediction before shifting the target (which introduces NaN on the last row)
+    # This ensures latest_row has the EXACT same feature columns as X_train.
+    feat_for_latest = feat.dropna()
+    latest_row = feat_for_latest.iloc[[-1]]
+    
     feat["target"] = close.pct_change().shift(-1)
     feat = feat.dropna()
 
@@ -183,21 +188,7 @@ def predict_price(
 
     X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
     y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
-    if X_test.empty:
-        return None
-
-    # Calculate latest_row before model execution
-    effective_lookback = min(lookback, len(close))
-    latest_close_series = close.iloc[-effective_lookback:]
-
-    latest_frame = pd.DataFrame(index=latest_close_series.index)
-    latest_frame["close"] = latest_close_series
-    latest_frame["sma_fast"] = latest_close_series.rolling(w_sma_fast).mean()
-    latest_frame["sma_slow"] = latest_close_series.rolling(w_sma_slow).mean()
-    latest_frame["momentum"] = latest_close_series.pct_change(w_mom)
-    latest_frame["volatility"] = latest_close_series.pct_change().rolling(w_vol).std()
-    latest_row = latest_frame.dropna().iloc[[-1]]
-    if latest_row.empty:
+    if X_test.empty or latest_row.empty:
         return None
     
     rob_scaler = RobustScaler()
