@@ -155,6 +155,18 @@ def predict_price(
     if macd is not None and not macd.empty:
         feat["macd"] = macd.iloc[:, 0]
         feat["macd_signal"] = macd.iloc[:, 1]
+    feat["lag_return"] = close.pct_change(1).shift(1)
+    
+    bbands = ta.bbands(close, length=20)
+    if bbands is not None and not bbands.empty:
+        feat["bb_lower"] = bbands.iloc[:, 0]
+        feat["bb_upper"] = bbands.iloc[:, 2]
+        
+    if "volume" in df.columns and "high" in df.columns and "low" in df.columns:
+        vwap = ta.vwap(high=df["high"], low=df["low"], close=df["close"], volume=df["volume"])
+        if vwap is not None and not vwap.empty:
+            feat["vwap"] = vwap
+
     feat["target"] = close.pct_change().shift(-1)
     feat = feat.dropna()
 
@@ -162,7 +174,7 @@ def predict_price(
     if len(feat) < min_required:
         return None
 
-    X = feat[["close", "sma_fast", "sma_slow", "momentum", "volatility"]]
+    X = feat.drop(columns=["target"])
     y = feat["target"]
 
     split_idx = int(len(feat) * (1 - test_size))
@@ -289,6 +301,18 @@ def compare_all_models(
     if macd is not None and not macd.empty:
         feat["macd"] = macd.iloc[:, 0]
         feat["macd_signal"] = macd.iloc[:, 1]
+    feat["lag_return"] = close.pct_change(1).shift(1)
+    
+    bbands = ta.bbands(close, length=20)
+    if bbands is not None and not bbands.empty:
+        feat["bb_lower"] = bbands.iloc[:, 0]
+        feat["bb_upper"] = bbands.iloc[:, 2]
+        
+    if "volume" in df.columns and "high" in df.columns and "low" in df.columns:
+        vwap = ta.vwap(high=df["high"], low=df["low"], close=df["close"], volume=df["volume"])
+        if vwap is not None and not vwap.empty:
+            feat["vwap"] = vwap
+
     feat["target"] = close.pct_change().shift(-1)
     feat = feat.dropna()
 
@@ -296,7 +320,7 @@ def compare_all_models(
     if len(feat) < min_required:
         return None
 
-    X = feat[["close", "sma_fast", "sma_slow", "momentum", "volatility"]]
+    X = feat.drop(columns=["target"])
     y = feat["target"]
 
     split_idx = int(len(feat) * (1 - test_size))
@@ -322,12 +346,16 @@ def compare_all_models(
         mae = float(mean_absolute_error(y_true_actual, y_pred))
         rmse = float(np.sqrt(mean_squared_error(y_true_actual, y_pred)))
         r2 = float(r2_score(y_true_actual, y_pred))
+        
+        # Calculate MAPE (handling zero division)
+        mape = float(np.mean(np.abs((y_true_actual - y_pred) / np.where(y_true_actual == 0, 1e-8, y_true_actual)))) * 100
+        
         actual_dir = (y_true_actual > today_close).astype(int)
         pred_dir = (y_pred > today_close).astype(int)
         acc = float(accuracy_score(actual_dir, pred_dir))
         f1 = float(f1_score(actual_dir, pred_dir, zero_division=0))
         cm = confusion_matrix(actual_dir, pred_dir, labels=[0, 1]).tolist()
-        return {"MAE": mae, "RMSE": rmse, "R2": r2, "Accuracy": acc, "F1 Score": f1, "CM": cm, "y_pred": y_pred.tolist()}
+        return {"MAE": mae, "RMSE": rmse, "MAPE": mape, "R2": r2, "Direction Accuracy": acc, "F1 Score": f1, "CM": cm, "y_pred": y_pred.tolist()}
 
     rob_scaler = RobustScaler()
     X_train_scaled = rob_scaler.fit_transform(X_train)
@@ -345,7 +373,17 @@ def compare_all_models(
     y_pred_xg_ret = xg.predict(X_test_scaled)
     results["models"]["XGBoost"] = get_metrics(y_pred_xg_ret)
 
-    # 3. LSTM
+    # 3. LightGBM
+    try:
+        import lightgbm as lgb
+        lgbm = lgb.LGBMRegressor(n_estimators=50, max_depth=3, learning_rate=0.1, random_state=42)
+        lgbm.fit(X_train_scaled, y_train)
+        y_pred_lgb_ret = lgbm.predict(X_test_scaled)
+        results["models"]["LightGBM"] = get_metrics(y_pred_lgb_ret)
+    except Exception as e:
+        results["models"]["LightGBM"] = {"error": str(e)}
+
+    # 4. CNN-LSTM
     try:
         import os
         os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -356,26 +394,28 @@ def compare_all_models(
         tf.random.set_seed(42)
         
         from tensorflow.keras.models import Sequential
-        from tensorflow.keras.layers import LSTM, Dense, Dropout
+        from tensorflow.keras.layers import Conv1D, MaxPooling1D, LSTM, Dense, Dropout
         from sklearn.preprocessing import MinMaxScaler
         
         scaler_y = MinMaxScaler()
         y_train_lstm_scaled = scaler_y.fit_transform(y_train.values.reshape(-1, 1))
         
-        X_train_lstm = X_train_scaled.reshape((X_train_scaled.shape[0], 1, X_train_scaled.shape[1]))
-        X_test_lstm = X_test_scaled.reshape((X_test_scaled.shape[0], 1, X_test_scaled.shape[1]))
+        X_train_lstm = X_train_scaled.reshape((X_train_scaled.shape[0], X_train_scaled.shape[1], 1))
+        X_test_lstm = X_test_scaled.reshape((X_test_scaled.shape[0], X_test_scaled.shape[1], 1))
         
-        lstm_model = Sequential([
-            LSTM(50, activation='relu', input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])),
+        cnn_lstm_model = Sequential([
+            Conv1D(filters=32, kernel_size=2, activation='relu', input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])),
+            MaxPooling1D(pool_size=2),
+            LSTM(50, activation='relu'),
             Dropout(0.2),
             Dense(1)
         ])
-        lstm_model.compile(optimizer='adam', loss='mse')
-        lstm_model.fit(X_train_lstm, y_train_lstm_scaled, epochs=50, verbose=0)
-        y_pred_scaled = lstm_model.predict(X_test_lstm, verbose=0)
+        cnn_lstm_model.compile(optimizer='adam', loss='mse')
+        cnn_lstm_model.fit(X_train_lstm, y_train_lstm_scaled, epochs=50, verbose=0)
+        y_pred_scaled = cnn_lstm_model.predict(X_test_lstm, verbose=0)
         y_pred_lstm_ret = scaler_y.inverse_transform(y_pred_scaled).flatten()
-        results["models"]["LSTM"] = get_metrics(y_pred_lstm_ret)
+        results["models"]["CNN-LSTM"] = get_metrics(y_pred_lstm_ret)
     except Exception as e:
-        results["models"]["LSTM"] = {"error": str(e)}
+        results["models"]["CNN-LSTM"] = {"error": str(e)}
 
     return results

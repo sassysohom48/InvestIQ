@@ -836,8 +836,8 @@ if st.session_state["current_page"] == "dashboard":
                                         "Model": m_name,
                                         "MAE": round(metrics["MAE"], 2),
                                         "RMSE": round(metrics["RMSE"], 2),
-                                        "R² Score": round(metrics["R2"], 4),
-                                        "Accuracy": f"{metrics['Accuracy']*100:.1f}%",
+                                        "MAPE": f"{metrics['MAPE']:.2f}%",
+                                        "Direction Accuracy": f"{metrics['Direction Accuracy']*100:.1f}%",
                                         "F1 Score": round(metrics["F1 Score"], 2)
                                     })
                         
@@ -863,12 +863,12 @@ if st.session_state["current_page"] == "dashboard":
                                     m_cols = st.columns(3)
                                     # Best Model Logic
                                     best_mae = sum_df.loc[sum_df["MAE"].idxmin()]["Model"]
-                                    best_acc = sum_df.loc[sum_df["Accuracy"].str.rstrip('%').astype(float).idxmax()]["Model"]
-                                    best_r2 = sum_df.loc[sum_df["R² Score"].idxmax()]["Model"]
+                                    best_acc = sum_df.loc[sum_df["Direction Accuracy"].str.rstrip('%').astype(float).idxmax()]["Model"]
+                                    best_mape = sum_df.loc[sum_df["MAPE"].str.rstrip('%').astype(float).idxmin()]["Model"]
                             
                                     m_cols[0].metric("Lowest MAE", best_mae)
                                     m_cols[1].metric("Highest Accuracy", best_acc)
-                                    m_cols[2].metric("Best R² Score", best_r2)
+                                    m_cols[2].metric("Lowest MAPE", best_mape)
 
                                     # Side-by-Side Bar Charts
                                     b1, b2 = st.columns(2)
@@ -877,7 +877,7 @@ if st.session_state["current_page"] == "dashboard":
                                         st.plotly_chart(fig_mae, use_container_width=True)
                                     with b2:
                                         # Clean Accuracy string for plotting
-                                        acc_vals = sum_df["Accuracy"].str.rstrip('%').astype(float)
+                                        acc_vals = sum_df["Direction Accuracy"].str.rstrip('%').astype(float)
                                         temp_df = sum_df.copy()
                                         temp_df["Accuracy %"] = acc_vals
                                         fig_acc = px.bar(temp_df, x="Model", y="Accuracy %", color="Model", title="Directional Accuracy (Higher is Better)")

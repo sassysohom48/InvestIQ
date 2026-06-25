@@ -11,3 +11,4 @@ scipy
 passlib
 streamlit-cookies-controller
 tensorflow-cpu>=2.15.0
+lightgbm>=4.0.0
