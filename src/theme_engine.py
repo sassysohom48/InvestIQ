@@ -247,7 +247,10 @@ def get_theme_css(theme_name: str) -> str:
         border-color: var(--accent-color) !important;
     }}
     
-    [data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] p {{
+    [data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] p,
+    [data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] div,
+    [data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] span,
+    [data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] * {{
         color: #ffffff !important;
     }}
 
@@ -311,19 +314,24 @@ def get_theme_css(theme_name: str) -> str:
     
     /* Primary buttons */
     .stButton > button[kind="primary"],
-    .stFormSubmitButton > button[kind="primaryFormSubmit"] {{
+    .stButton > button[kind="primary"] *,
+    .stFormSubmitButton > button[kind="primaryFormSubmit"],
+    .stFormSubmitButton > button[kind="primaryFormSubmit"] * {{
         background-color: var(--accent-color) !important;
-        color: #fff !important;
+        color: #ffffff !important;
     }}
     
     .stButton > button[kind="primary"]:hover,
-    .stFormSubmitButton > button[kind="primaryFormSubmit"]:hover {{
+    .stButton > button[kind="primary"]:hover *,
+    .stFormSubmitButton > button[kind="primaryFormSubmit"]:hover,
+    .stFormSubmitButton > button[kind="primaryFormSubmit"]:hover * {{
         background-color: var(--accent-color) !important;
         box-shadow: 0 4px 10px var(--shadow-color-hover) !important;
     }}
 
     /* Target the Logout Button safely using the CSS has() and adjacent sibling selectors */
-    .element-container:has(.logout-btn-wrapper) + .element-container button[kind="secondary"]:hover {{
+    .element-container:has(.logout-btn-wrapper) + .element-container button[kind="secondary"]:hover,
+    .element-container:has(.logout-btn-wrapper) + .element-container button[kind="secondary"]:hover * {{
         background-color: #ef4444 !important;
         border-color: #ef4444 !important;
         color: #ffffff !important;
