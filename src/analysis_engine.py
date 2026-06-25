@@ -123,22 +123,8 @@ def calculate_position_size(
     }
 
 
-def predict_price(
-    df: pd.DataFrame,
-    lookback: int = 60,
-    test_size: float = 0.2,
-    model_type: str = "Linear Regression",
-) -> Optional[Dict[str, float]]:
-    if not _validate_price_df(df):
-        return None
-    if lookback < 5 or not (0.05 <= test_size <= 0.5):
-        return None
-
+def _build_features(df: pd.DataFrame) -> pd.DataFrame:
     close = df["close"].astype(float).copy()
-    if len(close) < 25:
-        return None
-
-    # Adapt feature windows for shorter history windows (e.g., 1mo)
     w_sma_fast = 5 if len(close) < 60 else 10
     w_sma_slow = 10 if len(close) < 60 else 20
     w_mom = 3 if len(close) < 60 else 5
@@ -167,13 +153,51 @@ def predict_price(
         if vwap is not None and not vwap.empty:
             feat["vwap"] = vwap
 
-    # Extract the very last row for live prediction before shifting the target (which introduces NaN on the last row)
-    # This ensures latest_row has the EXACT same feature columns as X_train.
+    # Fetch Macro data
+    import yfinance as yf
+    try:
+        start_dt = df.index.min().strftime('%Y-%m-%d')
+        end_dt = (df.index.max() + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+        
+        vix = yf.download("^INDIAVIX", start=start_dt, end=end_dt, progress=False)["Close"]
+        nse = yf.download("^NSEI", start=start_dt, end=end_dt, progress=False)["Close"]
+        
+        if isinstance(vix, pd.DataFrame): vix = vix.iloc[:, 0]
+        if isinstance(nse, pd.DataFrame): nse = nse.iloc[:, 0]
+        
+        feat["vix"] = vix
+        feat["nse_ret"] = nse.pct_change()
+    except Exception:
+        feat["vix"] = 15.0
+        feat["nse_ret"] = 0.0
+
+    feat["vix"] = feat["vix"].ffill().fillna(15.0)
+    feat["nse_ret"] = feat["nse_ret"].ffill().fillna(0.0)
+
+    # Extract the very last row for live prediction before shifting the target
     feat_for_latest = feat.dropna()
-    latest_row = feat_for_latest.iloc[[-1]]
+    latest_row = feat_for_latest.iloc[[-1]] if not feat_for_latest.empty else pd.DataFrame()
     
     feat["target"] = close.pct_change().shift(-1)
     feat = feat.dropna()
+    return feat, latest_row
+
+def predict_price(
+    df: pd.DataFrame,
+    lookback: int = 60,
+    test_size: float = 0.2,
+    model_type: str = "Linear Regression",
+) -> Optional[Dict[str, float]]:
+    if not _validate_price_df(df):
+        return None
+    if lookback < 5 or not (0.05 <= test_size <= 0.5):
+        return None
+
+    close = df["close"].astype(float).copy()
+    if len(close) < 25:
+        return None
+
+    feat, latest_row = _build_features(df)
 
     min_required = 18 if len(close) < 60 else 30
     if len(feat) < min_required:
@@ -212,22 +236,29 @@ def predict_price(
         np.random.seed(42)
         tf.random.set_seed(42)
         
-        from tensorflow.keras.models import Sequential
-        from tensorflow.keras.layers import LSTM, Dense, Dropout
+        from tensorflow.keras.models import Model
+        from tensorflow.keras.layers import Input, Conv1D, MaxPooling1D, LSTM, Dense, Dropout, Attention
         from sklearn.preprocessing import MinMaxScaler
         
         scaler_y = MinMaxScaler()
         y_train_lstm_scaled = scaler_y.fit_transform(y_train.values.reshape(-1, 1))
         
-        X_train_lstm = X_train_scaled.reshape((X_train_scaled.shape[0], 1, X_train_scaled.shape[1]))
-        X_test_lstm = X_test_scaled.reshape((X_test_scaled.shape[0], 1, X_test_scaled.shape[1]))
-        latest_row_lstm = latest_row_scaled.reshape((latest_row_scaled.shape[0], 1, latest_row_scaled.shape[1]))
+        X_train_lstm = X_train_scaled.reshape((X_train_scaled.shape[0], X_train_scaled.shape[1], 1))
+        X_test_lstm = X_test_scaled.reshape((X_test_scaled.shape[0], X_test_scaled.shape[1], 1))
+        latest_row_lstm = latest_row_scaled.reshape((latest_row_scaled.shape[0], latest_row_scaled.shape[1], 1))
         
-        model = Sequential([
-            LSTM(50, activation='relu', input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])),
-            Dropout(0.2),
-            Dense(1)
-        ])
+        inputs = Input(shape=(X_train_lstm.shape[1], X_train_lstm.shape[2]))
+        x = Conv1D(filters=32, kernel_size=2, activation='relu')(inputs)
+        x = MaxPooling1D(pool_size=2)(x)
+        lstm_out = LSTM(50, activation='relu', return_sequences=True)(x)
+        attn_out = Attention()([lstm_out, lstm_out])
+        # Pool the attention output over the sequence dimension
+        import tensorflow.keras.backend as K
+        x = tf.reduce_mean(attn_out, axis=1)
+        x = Dropout(0.2)(x)
+        outputs = Dense(1)(x)
+        
+        model = Model(inputs=inputs, outputs=outputs)
         model.compile(optimizer='adam', loss='mse')
         model.fit(X_train_lstm, y_train_lstm_scaled, epochs=50, verbose=0)
         
@@ -276,36 +307,7 @@ def compare_all_models(
     if len(close) < 25:
         return None
 
-    w_sma_fast = 5 if len(close) < 60 else 10
-    w_sma_slow = 10 if len(close) < 60 else 20
-    w_mom = 3 if len(close) < 60 else 5
-    w_vol = 5 if len(close) < 60 else 10
-
-    feat = pd.DataFrame(index=close.index)
-    feat["close"] = close
-    feat["sma_fast"] = close.rolling(w_sma_fast).mean()
-    feat["sma_slow"] = close.rolling(w_sma_slow).mean()
-    feat["momentum"] = close.pct_change(w_mom)
-    feat["volatility"] = close.pct_change().rolling(w_vol).std()
-    feat["rsi"] = ta.rsi(close, length=14)
-    macd = ta.macd(close, fast=12, slow=26, signal=9)
-    if macd is not None and not macd.empty:
-        feat["macd"] = macd.iloc[:, 0]
-        feat["macd_signal"] = macd.iloc[:, 1]
-    feat["lag_return"] = close.pct_change(1).shift(1)
-    
-    bbands = ta.bbands(close, length=20)
-    if bbands is not None and not bbands.empty:
-        feat["bb_lower"] = bbands.iloc[:, 0]
-        feat["bb_upper"] = bbands.iloc[:, 2]
-        
-    if "volume" in df.columns and "high" in df.columns and "low" in df.columns:
-        vwap = ta.vwap(high=df["high"], low=df["low"], close=df["close"], volume=df["volume"])
-        if vwap is not None and not vwap.empty:
-            feat["vwap"] = vwap
-
-    feat["target"] = close.pct_change().shift(-1)
-    feat = feat.dropna()
+    feat, _ = _build_features(df)
 
     min_required = 18 if len(close) < 60 else 30
     if len(feat) < min_required:
@@ -384,8 +386,8 @@ def compare_all_models(
         np.random.seed(42)
         tf.random.set_seed(42)
         
-        from tensorflow.keras.models import Sequential
-        from tensorflow.keras.layers import Conv1D, MaxPooling1D, LSTM, Dense, Dropout
+        from tensorflow.keras.models import Model
+        from tensorflow.keras.layers import Input, Conv1D, MaxPooling1D, LSTM, Dense, Dropout, Attention
         from sklearn.preprocessing import MinMaxScaler
         
         scaler_y = MinMaxScaler()
@@ -394,13 +396,17 @@ def compare_all_models(
         X_train_lstm = X_train_scaled.reshape((X_train_scaled.shape[0], X_train_scaled.shape[1], 1))
         X_test_lstm = X_test_scaled.reshape((X_test_scaled.shape[0], X_test_scaled.shape[1], 1))
         
-        cnn_lstm_model = Sequential([
-            Conv1D(filters=32, kernel_size=2, activation='relu', input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])),
-            MaxPooling1D(pool_size=2),
-            LSTM(50, activation='relu'),
-            Dropout(0.2),
-            Dense(1)
-        ])
+        inputs = Input(shape=(X_train_lstm.shape[1], X_train_lstm.shape[2]))
+        x = Conv1D(filters=32, kernel_size=2, activation='relu')(inputs)
+        x = MaxPooling1D(pool_size=2)(x)
+        lstm_out = LSTM(50, activation='relu', return_sequences=True)(x)
+        attn_out = Attention()([lstm_out, lstm_out])
+        import tensorflow.keras.backend as K
+        x = tf.reduce_mean(attn_out, axis=1)
+        x = Dropout(0.2)(x)
+        outputs = Dense(1)(x)
+        
+        cnn_lstm_model = Model(inputs=inputs, outputs=outputs)
         cnn_lstm_model.compile(optimizer='adam', loss='mse')
         cnn_lstm_model.fit(X_train_lstm, y_train_lstm_scaled, epochs=50, verbose=0)
         y_pred_scaled = cnn_lstm_model.predict(X_test_lstm, verbose=0)
