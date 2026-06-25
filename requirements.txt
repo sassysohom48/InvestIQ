@@ -5,7 +5,8 @@ streamlit>=1.28.0
 plotly>=5.17.0
 pandas-ta>=0.4.67b0
 scikit-learn>=1.3.0
-prophet>=1.1.5
 xgboost
 vaderSentiment>=2.0.0
-tensorflow>=2.15.0
+scipy
+passlib
+streamlit-cookies-controller
