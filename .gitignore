@@ -12,3 +12,6 @@ streamlit.err
 # Environment folders
 .venv/
 venv/
+
+# Secrets
+.streamlit/secrets.toml
