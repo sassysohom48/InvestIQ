@@ -4,8 +4,11 @@ from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_absolute_error
+import pandas_ta as ta
+from sklearn.linear_model import Ridge
+from sklearn.preprocessing import RobustScaler
+from sklearn.metrics import mean_absolute_error, mean_squared_error, accuracy_score, f1_score, confusion_matrix, r2_score
+import xgboost as xgb
 
 
 def _validate_price_df(df: pd.DataFrame) -> bool:
@@ -124,6 +127,7 @@ def predict_price(
     df: pd.DataFrame,
     lookback: int = 60,
     test_size: float = 0.2,
+    model_type: str = "Linear Regression",
 ) -> Optional[Dict[str, float]]:
     if not _validate_price_df(df):
         return None
@@ -146,10 +150,15 @@ def predict_price(
     feat["sma_slow"] = close.rolling(w_sma_slow).mean()
     feat["momentum"] = close.pct_change(w_mom)
     feat["volatility"] = close.pct_change().rolling(w_vol).std()
-    feat["target"] = close.shift(-1)
+    feat["rsi"] = ta.rsi(close, length=14)
+    macd = ta.macd(close, fast=12, slow=26, signal=9)
+    if macd is not None and not macd.empty:
+        feat["macd"] = macd.iloc[:, 0]
+        feat["macd_signal"] = macd.iloc[:, 1]
+    feat["target"] = close.pct_change().shift(-1)
     feat = feat.dropna()
 
-    min_required = 18 if len(close) < 60 else max(40, lookback)
+    min_required = 18 if len(close) < 60 else 30
     if len(feat) < min_required:
         return None
 
@@ -165,25 +174,77 @@ def predict_price(
     if X_test.empty:
         return None
 
-    model = LinearRegression()
-    model.fit(X_train, y_train)
-    y_pred_test = model.predict(X_test)
-    mae = float(mean_absolute_error(y_test, y_pred_test))
-
+    # Calculate latest_row before model execution
     effective_lookback = min(lookback, len(close))
-    latest_close = close.iloc[-effective_lookback:]
+    latest_close_series = close.iloc[-effective_lookback:]
 
-    latest_frame = pd.DataFrame(index=latest_close.index)
-    latest_frame["close"] = latest_close
-    latest_frame["sma_fast"] = latest_close.rolling(w_sma_fast).mean()
-    latest_frame["sma_slow"] = latest_close.rolling(w_sma_slow).mean()
-    latest_frame["momentum"] = latest_close.pct_change(w_mom)
-    latest_frame["volatility"] = latest_close.pct_change().rolling(w_vol).std()
+    latest_frame = pd.DataFrame(index=latest_close_series.index)
+    latest_frame["close"] = latest_close_series
+    latest_frame["sma_fast"] = latest_close_series.rolling(w_sma_fast).mean()
+    latest_frame["sma_slow"] = latest_close_series.rolling(w_sma_slow).mean()
+    latest_frame["momentum"] = latest_close_series.pct_change(w_mom)
+    latest_frame["volatility"] = latest_close_series.pct_change().rolling(w_vol).std()
     latest_row = latest_frame.dropna().iloc[[-1]]
     if latest_row.empty:
         return None
-
-    next_close_pred = float(model.predict(latest_row)[0])
+    
+    rob_scaler = RobustScaler()
+    X_train_scaled = rob_scaler.fit_transform(X_train)
+    X_test_scaled = rob_scaler.transform(X_test)
+    latest_row_scaled = rob_scaler.transform(latest_row)
+    
+    if model_type == "XGBoost":
+        model = xgb.XGBRegressor(n_estimators=50, max_depth=3, reg_lambda=1.0, learning_rate=0.1, random_state=42)
+        model.fit(X_train_scaled, y_train)
+        y_pred_ret_test = model.predict(X_test_scaled)
+        y_pred_test = X_test["close"].values * (1 + y_pred_ret_test)
+        latest_ret_pred = float(model.predict(latest_row_scaled)[0])
+        next_close_pred = float(latest_row["close"].iloc[0] * (1 + latest_ret_pred))
+    elif model_type == "LSTM":
+        import os
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+        import tensorflow as tf
+        import random
+        random.seed(42)
+        np.random.seed(42)
+        tf.random.set_seed(42)
+        
+        from tensorflow.keras.models import Sequential
+        from tensorflow.keras.layers import LSTM, Dense, Dropout
+        from sklearn.preprocessing import MinMaxScaler
+        
+        scaler_y = MinMaxScaler()
+        y_train_lstm_scaled = scaler_y.fit_transform(y_train.values.reshape(-1, 1))
+        
+        X_train_lstm = X_train_scaled.reshape((X_train_scaled.shape[0], 1, X_train_scaled.shape[1]))
+        X_test_lstm = X_test_scaled.reshape((X_test_scaled.shape[0], 1, X_test_scaled.shape[1]))
+        latest_row_lstm = latest_row_scaled.reshape((latest_row_scaled.shape[0], 1, latest_row_scaled.shape[1]))
+        
+        model = Sequential([
+            LSTM(50, activation='relu', input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])),
+            Dropout(0.2),
+            Dense(1)
+        ])
+        model.compile(optimizer='adam', loss='mse')
+        model.fit(X_train_lstm, y_train_lstm_scaled, epochs=50, verbose=0)
+        
+        y_pred_scaled = model.predict(X_test_lstm, verbose=0)
+        y_pred_ret_test = scaler_y.inverse_transform(y_pred_scaled).flatten()
+        y_pred_test = X_test["close"].values * (1 + y_pred_ret_test)
+        
+        next_ret_scaled = model.predict(latest_row_lstm, verbose=0)
+        latest_ret_pred = float(scaler_y.inverse_transform(next_ret_scaled)[0][0])
+        next_close_pred = float(latest_row["close"].iloc[0] * (1 + latest_ret_pred))
+    else:
+        model = Ridge(alpha=1.0)
+        model.fit(X_train_scaled, y_train)
+        y_pred_ret_test = model.predict(X_test_scaled)
+        y_pred_test = X_test["close"].values * (1 + y_pred_ret_test)
+        latest_ret_pred = float(model.predict(latest_row_scaled)[0])
+        next_close_pred = float(latest_row["close"].iloc[0] * (1 + latest_ret_pred))
+        
+    y_true_actual_price = X_test["close"].values * (1 + y_test.values)
+    mae = float(mean_absolute_error(y_true_actual_price, y_pred_test))
     current_close = float(close.iloc[-1])
     error_pct = float((mae / current_close) * 100) if current_close != 0 else 0.0
 
@@ -193,4 +254,128 @@ def predict_price(
         "mae_pct_of_price": error_pct,
         "train_rows": float(len(X_train)),
         "test_rows": float(len(X_test)),
+        "test_dates": list(X_test.index),
+        "y_pred_ret_test": y_pred_ret_test.tolist()
     }
+
+
+def compare_all_models(
+    df: pd.DataFrame,
+    lookback: int = 60,
+    test_size: float = 0.2,
+) -> Optional[Dict[str, Dict]]:
+    if not _validate_price_df(df):
+        return None
+    if lookback < 5 or not (0.05 <= test_size <= 0.5):
+        return None
+
+    close = df["close"].astype(float).copy()
+    if len(close) < 25:
+        return None
+
+    w_sma_fast = 5 if len(close) < 60 else 10
+    w_sma_slow = 10 if len(close) < 60 else 20
+    w_mom = 3 if len(close) < 60 else 5
+    w_vol = 5 if len(close) < 60 else 10
+
+    feat = pd.DataFrame(index=close.index)
+    feat["close"] = close
+    feat["sma_fast"] = close.rolling(w_sma_fast).mean()
+    feat["sma_slow"] = close.rolling(w_sma_slow).mean()
+    feat["momentum"] = close.pct_change(w_mom)
+    feat["volatility"] = close.pct_change().rolling(w_vol).std()
+    feat["rsi"] = ta.rsi(close, length=14)
+    macd = ta.macd(close, fast=12, slow=26, signal=9)
+    if macd is not None and not macd.empty:
+        feat["macd"] = macd.iloc[:, 0]
+        feat["macd_signal"] = macd.iloc[:, 1]
+    feat["target"] = close.pct_change().shift(-1)
+    feat = feat.dropna()
+
+    min_required = 18 if len(close) < 60 else 30
+    if len(feat) < min_required:
+        return None
+
+    X = feat[["close", "sma_fast", "sma_slow", "momentum", "volatility"]]
+    y = feat["target"]
+
+    split_idx = int(len(feat) * (1 - test_size))
+    if split_idx <= 0 or split_idx >= len(feat):
+        return None
+
+    X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+    y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+    if X_test.empty:
+        return None
+
+    today_close = X_test["close"].values
+    y_true_actual = today_close * (1 + y_test.values)
+
+    results = {
+        "test_dates": list(X_test.index),
+        "y_true": y_true_actual.tolist(),
+        "models": {}
+    }
+
+    def get_metrics(y_pred_ret):
+        y_pred = today_close * (1 + y_pred_ret)
+        mae = float(mean_absolute_error(y_true_actual, y_pred))
+        rmse = float(np.sqrt(mean_squared_error(y_true_actual, y_pred)))
+        r2 = float(r2_score(y_true_actual, y_pred))
+        actual_dir = (y_true_actual > today_close).astype(int)
+        pred_dir = (y_pred > today_close).astype(int)
+        acc = float(accuracy_score(actual_dir, pred_dir))
+        f1 = float(f1_score(actual_dir, pred_dir, zero_division=0))
+        cm = confusion_matrix(actual_dir, pred_dir, labels=[0, 1]).tolist()
+        return {"MAE": mae, "RMSE": rmse, "R2": r2, "Accuracy": acc, "F1 Score": f1, "CM": cm, "y_pred": y_pred.tolist()}
+
+    rob_scaler = RobustScaler()
+    X_train_scaled = rob_scaler.fit_transform(X_train)
+    X_test_scaled = rob_scaler.transform(X_test)
+
+    # 1. Ridge Regression (Replaces Linear Regression)
+    lr = Ridge(alpha=1.0)
+    lr.fit(X_train_scaled, y_train)
+    y_pred_lr_ret = lr.predict(X_test_scaled)
+    results["models"]["Linear Regression"] = get_metrics(y_pred_lr_ret)
+
+    # 2. XGBoost
+    xg = xgb.XGBRegressor(n_estimators=50, max_depth=3, reg_lambda=1.0, learning_rate=0.1, random_state=42)
+    xg.fit(X_train_scaled, y_train)
+    y_pred_xg_ret = xg.predict(X_test_scaled)
+    results["models"]["XGBoost"] = get_metrics(y_pred_xg_ret)
+
+    # 3. LSTM
+    try:
+        import os
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+        import tensorflow as tf
+        import random
+        random.seed(42)
+        np.random.seed(42)
+        tf.random.set_seed(42)
+        
+        from tensorflow.keras.models import Sequential
+        from tensorflow.keras.layers import LSTM, Dense, Dropout
+        from sklearn.preprocessing import MinMaxScaler
+        
+        scaler_y = MinMaxScaler()
+        y_train_lstm_scaled = scaler_y.fit_transform(y_train.values.reshape(-1, 1))
+        
+        X_train_lstm = X_train_scaled.reshape((X_train_scaled.shape[0], 1, X_train_scaled.shape[1]))
+        X_test_lstm = X_test_scaled.reshape((X_test_scaled.shape[0], 1, X_test_scaled.shape[1]))
+        
+        lstm_model = Sequential([
+            LSTM(50, activation='relu', input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])),
+            Dropout(0.2),
+            Dense(1)
+        ])
+        lstm_model.compile(optimizer='adam', loss='mse')
+        lstm_model.fit(X_train_lstm, y_train_lstm_scaled, epochs=50, verbose=0)
+        y_pred_scaled = lstm_model.predict(X_test_lstm, verbose=0)
+        y_pred_lstm_ret = scaler_y.inverse_transform(y_pred_scaled).flatten()
+        results["models"]["LSTM"] = get_metrics(y_pred_lstm_ret)
+    except Exception as e:
+        results["models"]["LSTM"] = {"error": str(e)}
+
+    return results

@@ -1,67 +1,78 @@
-# OpenTrade Analytics — Software Design Document
+# InvestIQ — Software Design Document
 
 ## System Architecture (Modular Monolith)
 
 ```
-User Interface (Streamlit)
-        |
-   Orchestrator / Main App
-       |          |            |
-  Data Engine  Analysis    Portfolio
-               Engine      Manager
-       |          |            |
-  Yahoo Finance   ML Models   SQLite
+        User Interface (Streamlit app_ui.py)
+                         |
+      ----------------------------------------
+      |                  |                   |
+ Data Engine      Analysis Engine      Portfolio Manager
+      |                  |                   |
+ Yahoo Finance    ML Models (LSTM,     SQLite (Multi-user)
+                  XGBoost) + VADER
 ```
 
 ## Module Breakdown
 
 ### 1. `data_engine.py`
-- **`get_stock_data(symbol, period)`**
+- Fetches historical OHLCV data via `yfinance`.
 - Appends `.NS` suffix for NSE symbols.
-- Fetches historical OHLCV data via yfinance.
-- Returns a cleaned Pandas DataFrame.
 
 ### 2. `analysis_engine.py`
-- **`apply_indicators(df)`** — Adds RSI, MACD, Moving Averages to DataFrame.
-- **`generate_signal(df)`** — Buy if RSI < 30, Sell if RSI > 70, else Hold.
-- **`predict_price(df)`** — Trains a Linear Regression or Prophet model on last 60 days to forecast next close.
-- **`calculate_position_size(capital, risk_pct, stop_loss_price, current_price)`** — Position sizing math.
+- **`apply_indicators(df)`** — Adds RSI, MACD, Moving Averages, Bollinger Bands.
+- **`generate_signal(df)`** — Rules-based signal (Buy/Sell/Hold) based on MACD/RSI crossovers.
+- **`predict_price()`** — Forecasts next close using Linear Regression, XGBoost, or LSTM models.
+- **`compare_all_models()`** — Runs all models and returns metrics (MAE).
+- **`calculate_position_size()`** — Math for 2x ATR dynamic stop loss and risk-based sizing.
 
-### 3. `portfolio_manager.py`
-- **`add_trade(symbol, qty, buy_price)`** — SQL INSERT into holdings.
-- **`remove_trade(trade_id)`** — SQL DELETE / mark as sold.
-- **`get_portfolio_value()`** — SELECT all holdings → fetch current price → calculate P&L.
+### 3. `sentiment_engine.py`
+- Fetches live news headlines via DuckDuckGo/News APIs.
+- Uses VADER Sentiment Analysis to score headlines as Bullish, Bearish, or Neutral.
 
-### 4. `app_ui.py` (Streamlit entry point)
-- **Sidebar:** Stock symbol input, risk % slider, portfolio view toggle.
-- **Main Panel:** Candlestick charts (Plotly), signal cards (Buy/Sell/Hold), prediction graphs, portfolio table.
+### 4. `portfolio_manager.py`
+- Multi-user authentication (password hashing, sessions).
+- CRUD operations for SQLite `holdings`, `transactions`, and `users` tables.
+- Calculates P&L and Sector Allocation distribution.
+
+### 5. `portfolio_optimizer.py`
+- **`optimize_portfolio()`** — Calculates the Markowitz Efficient Frontier to maximize Sharpe ratio based on historical covariance matrices.
+
+### 6. `app_ui.py` (Streamlit entry point)
+- **Routing:** Tab-based UI layout.
+- **Admin Panel:** Global user monitoring.
+- **Market View:** Candlesticks, signal cards, sentiment breakdown.
+- **Trade Screener:** Bulk-scanning Nifty indices for signals.
+- **Portfolio:** Interactive tables, add/remove trades, pie charts, CSV exports.
+- **Backtest / Strategy Builder:** SMA strategy testing and visualization.
 
 ## Database Schema (SQLite)
 
-### Table: `holdings`
+### Table: `users`
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| id | INTEGER | PK |
+| username | TEXT | Unique username |
+| email | TEXT | Unique email |
+| password_hash | TEXT | Bcrypt hash |
+| role | TEXT | 'admin' or 'user' |
 
-| Column      | Type    | Description              |
-| :---------- | :------ | :----------------------- |
-| id          | INTEGER | Primary key (auto)       |
-| symbol      | TEXT    | e.g. 'TATASTEEL.NS'      |
-| quantity    | INTEGER | Number of shares         |
-| avg_price   | REAL    | Average buy price        |
-| entry_date  | TEXT    | Date of purchase         |
+### Table: `holdings`
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| id | INTEGER | PK |
+| user_id | INTEGER | FK to users.id |
+| symbol | TEXT | Stock symbol |
+| quantity | INTEGER | Shares held |
+| avg_price | REAL | Entry price |
 
 ### Table: `transactions`
-
-| Column      | Type    | Description              |
-| :---------- | :------ | :----------------------- |
-| id          | INTEGER | Primary key (auto)       |
-| type        | TEXT    | 'BUY' or 'SELL'          |
-| symbol      | TEXT    | Stock symbol             |
-| price       | REAL    | Execution price          |
-| quantity    | INTEGER | Shares traded            |
-| timestamp   | TEXT    | Time of transaction      |
-
-## Data Flow
-1. User enters a symbol in Streamlit UI.
-2. `data_engine` fetches data from Yahoo Finance.
-3. `analysis_engine` computes indicators, signal, and price prediction.
-4. Results rendered as charts and cards in the UI.
-5. Portfolio actions (buy/sell) go through `portfolio_manager` to SQLite.
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| id | INTEGER | PK |
+| user_id | INTEGER | FK to users.id |
+| type | TEXT | BUY/SELL |
+| symbol | TEXT | Stock symbol |
+| price | REAL | Exec price |
+| quantity | INTEGER | Shares |
+| timestamp | TEXT | Timestamp |
