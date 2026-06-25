@@ -237,7 +237,7 @@ def predict_price(
         tf.random.set_seed(42)
         
         from tensorflow.keras.models import Model
-        from tensorflow.keras.layers import Input, Conv1D, MaxPooling1D, LSTM, Dense, Dropout, Attention
+        from tensorflow.keras.layers import Input, Conv1D, MaxPooling1D, LSTM, Dense, Dropout, Attention, GlobalAveragePooling1D
         from sklearn.preprocessing import MinMaxScaler
         
         scaler_y = MinMaxScaler()
@@ -252,9 +252,8 @@ def predict_price(
         x = MaxPooling1D(pool_size=2)(x)
         lstm_out = LSTM(50, activation='relu', return_sequences=True)(x)
         attn_out = Attention()([lstm_out, lstm_out])
-        # Pool the attention output over the sequence dimension
-        import tensorflow.keras.backend as K
-        x = tf.reduce_mean(attn_out, axis=1)
+        
+        x = GlobalAveragePooling1D()(attn_out)
         x = Dropout(0.2)(x)
         outputs = Dense(1)(x)
         
@@ -387,7 +386,7 @@ def compare_all_models(
         tf.random.set_seed(42)
         
         from tensorflow.keras.models import Model
-        from tensorflow.keras.layers import Input, Conv1D, MaxPooling1D, LSTM, Dense, Dropout, Attention
+        from tensorflow.keras.layers import Input, Conv1D, MaxPooling1D, LSTM, Dense, Dropout, Attention, GlobalAveragePooling1D
         from sklearn.preprocessing import MinMaxScaler
         
         scaler_y = MinMaxScaler()
@@ -401,8 +400,8 @@ def compare_all_models(
         x = MaxPooling1D(pool_size=2)(x)
         lstm_out = LSTM(50, activation='relu', return_sequences=True)(x)
         attn_out = Attention()([lstm_out, lstm_out])
-        import tensorflow.keras.backend as K
-        x = tf.reduce_mean(attn_out, axis=1)
+        
+        x = GlobalAveragePooling1D()(attn_out)
         x = Dropout(0.2)(x)
         outputs = Dense(1)(x)
         
