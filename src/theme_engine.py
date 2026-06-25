@@ -172,8 +172,21 @@ def get_theme_css(theme_name: str) -> str:
         display: none !important;
     }}
 
-    /* Aggressive Selectbox & Popover Fixes for Dark Mode */
+    /* Aggressive Selectbox, Input & Popover Fixes for Dark Mode */
     
+    /* Text and Number Input Fields */
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="input"] > div:hover,
+    div[data-baseweb="input"] > div:focus-within {{
+        background-color: var(--bg-card) !important;
+        border-color: var(--border-color) !important;
+    }}
+    div[data-baseweb="input"] input {{
+        color: var(--text-primary) !important;
+        background-color: transparent !important;
+        -webkit-text-fill-color: var(--text-primary) !important;
+    }}
+
     /* The main input box of the selectbox */
     div[data-baseweb="select"] > div,
     div[data-baseweb="select"] > div:hover {{

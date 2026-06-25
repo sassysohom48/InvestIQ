@@ -1119,7 +1119,7 @@ if st.session_state["current_page"] == "dashboard":
 
     if tab_strategy:
         with tab_strategy:
-            st.header("Custom Strategy Builder)")
+            st.header("Custom Strategy Builder")
             st.write("Construct your own technical analysis strategy visually, and instantly backtest it against historical data!")
     
             st.subheader("Define Your Buy Rule")
