@@ -1205,7 +1205,7 @@ if st.session_state["current_page"] == "dashboard":
             
                     st.subheader("Remove User")
                     with st.form("delete_user_form"):
-                        del_id = st.number_input("Enter User ID to Delete", min_value=1, step=1)
+                        del_id = st.number_input("Enter User ID to Delete (Admins cannot be deleted)", min_value=1, step=1)
                         del_submit = st.form_submit_button("Delete User", type="primary")
                         if del_submit:
                             target_user = next((u for u in users if u["id"] == del_id), None)
