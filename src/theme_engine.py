@@ -172,29 +172,51 @@ def get_theme_css(theme_name: str) -> str:
         display: none !important;
     }}
 
-    /* Fix Dropdown Menu visibility in Dark Mode across all Streamlit versions */
-    [data-baseweb="popover"] > div, 
-    [data-baseweb="menu"], 
-    ul[role="listbox"],
-    div[role="listbox"] {{
+    /* Aggressive Selectbox & Popover Fixes for Dark Mode */
+    
+    /* The main input box of the selectbox */
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="select"] > div:hover {{
         background-color: var(--bg-card) !important;
         color: var(--text-primary) !important;
+        border-color: var(--border-color) !important;
     }}
     
-    [data-baseweb="menu"] li,
+    /* The dropdown list portal wrapper */
+    div[data-baseweb="popover"] {{
+        background-color: var(--bg-card) !important;
+    }}
+    
+    /* The actual listbox inside the portal */
+    div[data-baseweb="popover"] ul,
+    div[data-baseweb="popover"] div[role="listbox"],
+    ul[role="listbox"] {{
+        background-color: var(--bg-card) !important;
+    }}
+    
+    /* The items inside the listbox */
+    div[data-baseweb="popover"] li,
+    div[data-baseweb="popover"] div[role="option"],
     ul[role="listbox"] li,
     ul[role="listbox"] div[role="option"] {{
-        color: var(--text-primary) !important;
         background-color: transparent !important;
+        color: var(--text-primary) !important;
     }}
     
-    [data-baseweb="menu"] li:hover,
+    /* Hover state for items */
+    div[data-baseweb="popover"] li:hover,
+    div[data-baseweb="popover"] div[role="option"]:hover,
     ul[role="listbox"] li:hover,
     ul[role="listbox"] div[role="option"]:hover,
     ul[role="listbox"] li[aria-selected="true"],
-    ul[role="listbox"] div[aria-selected="true"] {{
+    div[data-baseweb="popover"] li[aria-selected="true"] {{
         background-color: var(--bg-primary) !important;
         color: var(--accent-color) !important;
+    }}
+
+    /* Fix Dropdown SVG icons (the little arrow) */
+    div[data-baseweb="select"] svg {{
+        fill: var(--text-primary) !important;
     }}
 
     /* Style Tabs as Floating Cards */
