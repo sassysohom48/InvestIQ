@@ -286,6 +286,14 @@ def get_theme_css(theme_name: str) -> str:
         box-shadow: 0 4px 10px var(--shadow-color-hover) !important;
     }}
 
+    /* Target the Logout Button safely using the CSS has() and adjacent sibling selectors */
+    .element-container:has(.logout-btn-wrapper) + .element-container button[kind="secondary"]:hover {{
+        background-color: #ef4444 !important;
+        border-color: #ef4444 !important;
+        color: #ffffff !important;
+        filter: brightness(1.1) !important;
+    }}
+
     </style>
     """
     return css

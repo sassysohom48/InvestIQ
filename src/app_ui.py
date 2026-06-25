@@ -420,6 +420,7 @@ with st.sidebar:
         st.rerun()
         
     st.write("")
+    st.markdown('<div class="logout-btn-wrapper"></div>', unsafe_allow_html=True)
     if st.button(":material/logout: Logout", use_container_width=True, type="secondary"):
         cookie_controller.remove("investiq_session")
         for key in list(st.session_state.keys()):
