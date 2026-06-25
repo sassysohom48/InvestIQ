@@ -541,7 +541,7 @@ if st.session_state["current_page"] == "dashboard":
         best_model = "Linear Regression"
         for m_name, metrics in results["models"].items():
             if "error" not in metrics:
-                acc = float(str(metrics["Accuracy"]).rstrip('%'))
+                acc = float(str(metrics["Direction Accuracy"]).rstrip('%'))
                 if acc > best_acc:
                     best_acc = acc
                     best_model = m_name
