@@ -172,6 +172,17 @@ def get_theme_css(theme_name: str) -> str:
         display: none !important;
     }}
 
+    /* Alert Message Styling for Dark Mode Compatibility */
+    [data-testid="stAlert"] {{
+        background-color: var(--bg-card) !important;
+        border: 1px solid var(--border-color) !important;
+        color: var(--text-primary) !important;
+        border-radius: 8px !important;
+    }}
+    [data-testid="stAlert"] * {{
+        color: var(--text-primary) !important;
+    }}
+
     /* Aggressive Selectbox, Input & Popover Fixes for Dark Mode */
     
     /* Text and Number Input Fields */
