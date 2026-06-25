@@ -274,6 +274,7 @@ def update_password(username: str, new_password: str, db_path: str | Path = DEFA
         return cur.rowcount > 0
 
 def get_user_by_username(username: str, db_path: str | Path = DEFAULT_DB_PATH) -> Optional[dict]:
+    init_db(db_path)
     with _connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
