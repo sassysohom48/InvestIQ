@@ -592,23 +592,24 @@ if st.session_state["current_page"] == "dashboard":
             try:
                 nse_master = _load_nse_symbol_master()
                 symbols = nse_master["SYMBOL"].tolist()
-            default_idx = symbols.index("RELIANCE") if "RELIANCE" in symbols else 0
-            symbol_input = st.selectbox("Stock Symbol (NSE)", symbols, index=default_idx)
-            company_name = nse_master.loc[nse_master["SYMBOL"] == symbol_input, "NAME OF COMPANY"].iloc[0]
-            st.caption(f"Company: {company_name}")
-        except Exception:
-            st.warning("Could not load full NSE list right now; using manual symbol input fallback.")
-            symbol_input = st.text_input("Stock Symbol (NSE)", value="RELIANCE")
-        period = st.selectbox("Period", ["1mo", "3mo", "6mo", "1y", "2y"], index=4)
-    
-        with st.spinner("Dynamically determining best model..."):
-            model_type = get_dynamic_best_model(symbol_input, period)
-            opt_sl = get_optimal_stop_loss(symbol_input, period)
-        st.info(f"Dynamically Selected Best Model: **{model_type}**")
-    
-        risk_pct = st.slider("Risk % per trade", 0.5, 5.0, 2.0, 0.5)
-        capital = st.number_input("Capital", min_value=1000.0, value=100000.0, step=10000.0)
-        stop_loss_pct = st.slider("Stop Loss % (Optimized via 2x ATR)", 1.0, 20.0, float(opt_sl), 0.5)
+                default_idx = symbols.index("RELIANCE") if "RELIANCE" in symbols else 0
+                symbol_input = st.selectbox("Stock Symbol (NSE)", symbols, index=default_idx)
+                company_name = nse_master.loc[nse_master["SYMBOL"] == symbol_input, "NAME OF COMPANY"].iloc[0]
+                st.caption(f"Company: {company_name}")
+            except Exception:
+                st.warning("Could not load full NSE list right now; using manual symbol input fallback.")
+                symbol_input = st.text_input("Stock Symbol (NSE)", value="RELIANCE")
+            
+            period = st.selectbox("Period", ["1mo", "3mo", "6mo", "1y", "2y"], index=4)
+        
+            with st.spinner("Dynamically determining best model..."):
+                model_type = get_dynamic_best_model(symbol_input, period)
+                opt_sl = get_optimal_stop_loss(symbol_input, period)
+            st.info(f"Dynamically Selected Best Model: **{model_type}**")
+        
+            risk_pct = st.slider("Risk % per trade", 0.5, 5.0, 2.0, 0.5)
+            capital = st.number_input("Capital", min_value=1000.0, value=100000.0, step=10000.0)
+            stop_loss_pct = st.slider("Stop Loss % (Optimized via 2x ATR)", 1.0, 20.0, float(opt_sl), 0.5)
 
 
     is_admin = st.session_state["role"] == "admin"
