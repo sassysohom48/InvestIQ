@@ -172,15 +172,29 @@ def get_theme_css(theme_name: str) -> str:
         display: none !important;
     }}
 
-    /* Fix Dropdown Menu visibility in Dark Mode */
-    [data-baseweb="popover"], [data-baseweb="menu"], ul[role="listbox"] {{
+    /* Fix Dropdown Menu visibility in Dark Mode across all Streamlit versions */
+    [data-baseweb="popover"] > div, 
+    [data-baseweb="menu"], 
+    ul[role="listbox"],
+    div[role="listbox"] {{
         background-color: var(--bg-card) !important;
-    }}
-    [data-baseweb="menu"] li {{
         color: var(--text-primary) !important;
     }}
-    [data-baseweb="menu"] li:hover {{
+    
+    [data-baseweb="menu"] li,
+    ul[role="listbox"] li,
+    ul[role="listbox"] div[role="option"] {{
+        color: var(--text-primary) !important;
+        background-color: transparent !important;
+    }}
+    
+    [data-baseweb="menu"] li:hover,
+    ul[role="listbox"] li:hover,
+    ul[role="listbox"] div[role="option"]:hover,
+    ul[role="listbox"] li[aria-selected="true"],
+    ul[role="listbox"] div[aria-selected="true"] {{
         background-color: var(--bg-primary) !important;
+        color: var(--accent-color) !important;
     }}
 
     /* Style Tabs as Floating Cards */
