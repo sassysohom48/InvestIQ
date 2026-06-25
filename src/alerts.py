@@ -14,11 +14,20 @@ def send_alert_email(to_email: str, subject: str, body_html: str) -> tuple[bool,
         # Secrets not configured
         return False, f"Secrets error: {e}"
 
-    msg = MIMEMultipart()
-    msg['From'] = sender_email
+    import re
+    msg = MIMEMultipart("alternative")
+    
+    # Add proper headers to reduce spam score
+    msg['From'] = f"InvestIQ <{sender_email}>"
     msg['To'] = to_email
     msg['Subject'] = subject
+    msg['Reply-To'] = sender_email
 
+    # Generate a simple plaintext version by stripping HTML tags
+    body_text = re.sub(r'<[^>]+>', '', body_html)
+    
+    # Order matters: text/plain first, then text/html
+    msg.attach(MIMEText(body_text, 'plain'))
     msg.attach(MIMEText(body_html, 'html'))
 
     try:
