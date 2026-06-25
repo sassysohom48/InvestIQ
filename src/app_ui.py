@@ -302,6 +302,7 @@ def login_screen():
                         st.session_state["email"] = user["email"]
                         st.session_state["role"] = user["role"]
                         st.session_state["ui_theme"] = user.get("ui_theme", "Sunset Glow (Light)")
+                        st.session_state["profile_pic"] = user.get("profile_pic")
                         cookie_controller.set("investiq_session", user["username"], max_age=86400*30)
                         st.success("Login Successful! Initializing dashboard...")
                         st.components.v1.html("<script>setTimeout(function() { window.parent.location.reload(); }, 1000);</script>", height=0)
@@ -372,6 +373,7 @@ if "user_id" not in st.session_state:
             st.session_state["email"] = user["email"]
             st.session_state["role"] = user["role"]
             st.session_state["ui_theme"] = user.get("ui_theme", "Sunset Glow (Light)")
+            st.session_state["profile_pic"] = user.get("profile_pic")
             st.rerun()
 
 if "user_id" not in st.session_state:
@@ -383,13 +385,16 @@ if "current_page" not in st.session_state:
 
 with st.sidebar:
     # 1. Professional User Profile Card
+    if st.session_state.get("profile_pic"):
+        profile_html = f'<img src="data:image/png;base64,{st.session_state["profile_pic"]}" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex-shrink: 0; border: 2px solid var(--accent-color);">'
+    else:
+        profile_html = f'<div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-color), #3b82f6); color: white; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; font-weight: 700; flex-shrink: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">{st.session_state.get("username", "U")[0].upper()}</div>'
+
     st.markdown(f"""
     <div style="padding: 16px; border-radius: 12px; background: linear-gradient(135deg, var(--bg-card), var(--bg-primary)); border: 1px solid var(--border-color); display: flex; align-items: center; gap: 16px; margin-bottom: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-        <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-color), #3b82f6); color: white; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; font-weight: 700; flex-shrink: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            {st.session_state['username'][0].upper()}
-        </div>
+        {profile_html}
         <div style="overflow: hidden;">
-            <div style="font-weight: 700; color: var(--text-primary); font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{st.session_state['username'].upper()}</div>
+            <div style="font-weight: 700; color: var(--text-primary); font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{st.session_state.get('username', 'Unknown').upper()}</div>
             <div style="color: var(--text-secondary); font-size: 0.85rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">{st.session_state.get('role', 'User')}</div>
         </div>
     </div>
@@ -1262,6 +1267,57 @@ elif st.session_state["current_page"] == "profile":
     with col2:
         st.metric("Total Portfolio Value", f"₹{port_value:,.2f}")
         st.metric("Trading Tier", "Elite" if port_value > 100000 else "Standard")
+
+    st.divider()
+    st.subheader("Profile Picture")
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        if st.session_state.get("profile_pic"):
+            st.markdown(f'<img src="data:image/png;base64,{st.session_state["profile_pic"]}" style="width:150px;height:150px;border-radius:50%;object-fit:cover;box-shadow:0 4px 6px rgba(0,0,0,0.1);border:3px solid var(--accent-color);">', unsafe_allow_html=True)
+            st.write("")
+            if st.button("Remove Picture", type="secondary", use_container_width=True):
+                from src.portfolio_manager import update_profile_picture
+                update_profile_picture(st.session_state["user_id"], None)
+                st.session_state["profile_pic"] = None
+                st.rerun()
+        else:
+            st.markdown(f"""
+            <div style="width: 150px; height: 150px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-color), #3b82f6); color: white; display: flex; justify-content: center; align-items: center; font-size: 4rem; font-weight: 700; flex-shrink: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                {st.session_state.get('username', 'U')[0].upper()}
+            </div>
+            """, unsafe_allow_html=True)
+            
+    with c2:
+        uploaded_file = st.file_uploader("Upload a new profile picture", type=["png", "jpg", "jpeg"])
+        if uploaded_file is not None:
+            if st.button("Save Picture", type="primary"):
+                try:
+                    from PIL import Image
+                    import io
+                    import base64
+                    from src.portfolio_manager import update_profile_picture
+                    
+                    img = Image.open(uploaded_file)
+                    if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+                    width, height = img.size
+                    min_dim = min(width, height)
+                    left = (width - min_dim)/2
+                    top = (height - min_dim)/2
+                    right = (width + min_dim)/2
+                    bottom = (height + min_dim)/2
+                    img = img.crop((left, top, right, bottom))
+                    img = img.resize((200, 200), Image.Resampling.LANCZOS)
+                    
+                    buffered = io.BytesIO()
+                    img.save(buffered, format="JPEG", optimize=True, quality=85)
+                    img_str = base64.b64encode(buffered.getvalue()).decode()
+                    
+                    update_profile_picture(st.session_state["user_id"], img_str)
+                    st.session_state["profile_pic"] = img_str
+                    st.success("Profile picture updated!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to process image: {e}")
 
 elif st.session_state["current_page"] == "settings":
     st.title("App Settings")
