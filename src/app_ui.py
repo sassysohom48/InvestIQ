@@ -396,7 +396,7 @@ with st.sidebar:
     # 2. Sleek Navigation
     st.markdown("<div style='font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;'>Navigation</div>", unsafe_allow_html=True)
     
-    nav_options = {"Dashboard": "📊 Dashboard", "My Profile": "👤 My Profile", "Settings": "⚙️ Settings"}
+    nav_options = {"Dashboard": ":material/dashboard: Dashboard", "My Profile": ":material/person: My Profile", "Settings": ":material/settings: Settings"}
     current_nav = "Dashboard"
     if st.session_state["current_page"] == "profile": current_nav = "My Profile"
     elif st.session_state["current_page"] == "settings": current_nav = "Settings"
@@ -420,7 +420,7 @@ with st.sidebar:
         st.rerun()
         
     st.write("")
-    if st.button("🚪 Logout", use_container_width=True, type="secondary"):
+    if st.button(":material/logout: Logout", use_container_width=True, type="secondary"):
         cookie_controller.remove("investiq_session")
         for key in list(st.session_state.keys()):
             del st.session_state[key]
