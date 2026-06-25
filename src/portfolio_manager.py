@@ -5,15 +5,22 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
+from contextlib import contextmanager
 
 from src.data_engine import _ensure_nse_symbol, get_current_price
 
 DEFAULT_DB_PATH = Path("data/portfolio.db")
 
-def _connect(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
+@contextmanager
+def _connect(db_path: str | Path = DEFAULT_DB_PATH):
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    return sqlite3.connect(path)
+    conn = sqlite3.connect(path, check_same_thread=False)
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 def hash_password(password: str) -> str:
     # Simple SHA-256 hash for demonstration

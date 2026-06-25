@@ -536,7 +536,7 @@ if st.session_state["current_page"] == "dashboard":
             q5.metric("Official Close", f"{latest_close:,.2f}", f"{change:,.2f} ({change_pct:,.2f}%)")
 
 
-    @st.cache_data(ttl=3600, show_spinner=False)
+    @st.cache_data(ttl=300, show_spinner=False)
     def get_dynamic_best_model(symbol_input, period):
         comp_df = get_stock_data(symbol_input, period=period)
         if comp_df is None or comp_df.empty: return "Linear Regression"
@@ -555,7 +555,7 @@ if st.session_state["current_page"] == "dashboard":
                     best_model = m_name
         return best_model
 
-    @st.cache_data(ttl=3600, show_spinner=False)
+    @st.cache_data(ttl=300, show_spinner=False)
     def get_optimal_stop_loss(symbol_input, period):
         comp_df = get_stock_data(symbol_input, period=period)
         if comp_df is None or comp_df.empty or len(comp_df) < 20: return 5.0
