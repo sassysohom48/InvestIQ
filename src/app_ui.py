@@ -379,56 +379,48 @@ if "user_id" not in st.session_state:
 if "current_page" not in st.session_state:
     st.session_state["current_page"] = "dashboard"
 
-st.sidebar.write("") # spacer
-with st.sidebar.popover(f"👤 {st.session_state['username'].upper()}", use_container_width=True):
-    st.markdown("""
-        <style>
-        /* Fix the layout gaps inside the popover */
-        div[data-testid="stPopoverBody"] {
-            padding: 8px !important;
-            border-radius: 12px !important;
-        }
-        div[data-testid="stPopoverBody"] > div > div {
-            gap: 2px !important;
-        }
-        
-        /* Make all buttons inside popover look like menu items */
-        div[data-testid="stPopoverBody"] .stButton > button {
-            border: none !important;
-            background-color: transparent !important;
-            text-align: left !important;
-            justify-content: flex-start !important;
-            box-shadow: none !important;
-            padding: 8px 12px !important;
-            font-weight: 500 !important;
-            border-radius: 6px !important;
-        }
-        
-        div[data-testid="stPopoverBody"] .stButton > button:hover {
-            background-color: var(--bg-primary) !important;
-            color: var(--accent-color) !important;
-            transform: translateX(3px) !important;
-        }
-        
-        /* The last button is the Logout button */
-        div[data-testid="stPopoverBody"] .stButton:last-of-type > button:hover {
-            background-color: rgba(255, 50, 50, 0.1) !important;
-            color: #ff3232 !important;
-        }
-        </style>
+with st.sidebar:
+    # 1. Professional User Profile Card
+    st.markdown(f"""
+    <div style="padding: 16px; border-radius: 12px; background: linear-gradient(135deg, var(--bg-card), var(--bg-primary)); border: 1px solid var(--border-color); display: flex; align-items: center; gap: 16px; margin-bottom: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-color), #3b82f6); color: white; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; font-weight: 700; flex-shrink: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            {st.session_state['username'][0].upper()}
+        </div>
+        <div style="overflow: hidden;">
+            <div style="font-weight: 700; color: var(--text-primary); font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{st.session_state['username'].upper()}</div>
+            <div style="color: var(--text-secondary); font-size: 0.85rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">{st.session_state.get('role', 'User')}</div>
+        </div>
+    </div>
     """, unsafe_allow_html=True)
+
+    # 2. Sleek Navigation
+    st.markdown("<div style='font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;'>Navigation</div>", unsafe_allow_html=True)
     
-    if st.button("Dashboard", use_container_width=True):
+    nav_options = {"Dashboard": "📊 Dashboard", "My Profile": "👤 My Profile", "Settings": "⚙️ Settings"}
+    current_nav = "Dashboard"
+    if st.session_state["current_page"] == "profile": current_nav = "My Profile"
+    elif st.session_state["current_page"] == "settings": current_nav = "Settings"
+    
+    selected_nav = st.radio(
+        "Navigation",
+        options=list(nav_options.keys()),
+        format_func=lambda x: nav_options[x],
+        index=list(nav_options.keys()).index(current_nav),
+        label_visibility="collapsed"
+    )
+    
+    if selected_nav == "Dashboard" and st.session_state["current_page"] != "dashboard":
         st.session_state["current_page"] = "dashboard"
         st.rerun()
-    if st.button("My Profile", use_container_width=True):
+    elif selected_nav == "My Profile" and st.session_state["current_page"] != "profile":
         st.session_state["current_page"] = "profile"
         st.rerun()
-    if st.button("Settings", use_container_width=True):
+    elif selected_nav == "Settings" and st.session_state["current_page"] != "settings":
         st.session_state["current_page"] = "settings"
         st.rerun()
-    st.divider()
-    if st.button("Logout", use_container_width=True):
+        
+    st.write("")
+    if st.button("🚪 Logout", use_container_width=True, type="secondary"):
         cookie_controller.remove("investiq_session")
         for key in list(st.session_state.keys()):
             del st.session_state[key]
@@ -593,11 +585,13 @@ if st.session_state["current_page"] == "dashboard":
         return out
 
 
-    with st.sidebar:
-        st.header("Controls")
-        try:
-            nse_master = _load_nse_symbol_master()
-            symbols = nse_master["SYMBOL"].tolist()
+    if st.session_state["current_page"] == "dashboard":
+        with st.sidebar:
+            st.divider()
+            st.markdown("<div style='font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;'>Market Controls</div>", unsafe_allow_html=True)
+            try:
+                nse_master = _load_nse_symbol_master()
+                symbols = nse_master["SYMBOL"].tolist()
             default_idx = symbols.index("RELIANCE") if "RELIANCE" in symbols else 0
             symbol_input = st.selectbox("Stock Symbol (NSE)", symbols, index=default_idx)
             company_name = nse_master.loc[nse_master["SYMBOL"] == symbol_input, "NAME OF COMPANY"].iloc[0]
