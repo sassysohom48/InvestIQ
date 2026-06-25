@@ -38,13 +38,6 @@ pip install -r requirements.txt
 streamlit run src/app_ui.py
 ```
 
-## ☁️ Deploy to Streamlit Cloud
-
-1. Fork or push this repository to GitHub.
-2. Go to [share.streamlit.io](https://share.streamlit.io/) and connect your GitHub account.
-3. Deploy `src/app_ui.py`.
-4. Add your `.streamlit/secrets.toml` to the Advanced Settings for email alerts to work.
-
 ## ⚠️ Disclaimer
 
 - Data is fetched via Yahoo Finance and may be delayed.
