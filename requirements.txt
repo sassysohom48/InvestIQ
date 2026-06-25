@@ -10,3 +10,4 @@ vaderSentiment>=2.0.0
 scipy
 passlib
 streamlit-cookies-controller
+tensorflow-cpu>=2.15.0
