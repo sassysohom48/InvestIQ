@@ -27,6 +27,13 @@ def get_stock_data(
         return None
 
     df.columns = [col[0].lower() if isinstance(col, tuple) else col.lower() for col in df.columns]
+    
+    if "close" in df.columns:
+        df = df.dropna(subset=["close"])
+        
+    if df.empty:
+        return None
+        
     df.index = pd.to_datetime(df.index)
     df.index.name = "date"
     return df
