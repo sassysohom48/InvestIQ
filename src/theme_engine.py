@@ -256,7 +256,8 @@ def get_theme_css(theme_name: str) -> str:
     }}
 
     /* Buttons */
-    .stButton > button {{
+    .stButton > button,
+    .stFormSubmitButton > button {{
         border-radius: 8px !important;
         transition: transform 0.2s ease, filter 0.2s ease !important;
         border: 1px solid var(--accent-color) !important;
@@ -264,7 +265,8 @@ def get_theme_css(theme_name: str) -> str:
         color: var(--accent-color) !important;
     }}
     
-    .stButton > button:hover {{
+    .stButton > button:hover,
+    .stFormSubmitButton > button:hover {{
         transform: scale(1.02) !important;
         background-color: var(--accent-color) !important;
         color: #fff !important;
@@ -272,12 +274,14 @@ def get_theme_css(theme_name: str) -> str:
     }}
     
     /* Primary buttons */
-    .stButton > button[kind="primary"] {{
+    .stButton > button[kind="primary"],
+    .stFormSubmitButton > button[kind="primaryFormSubmit"] {{
         background-color: var(--accent-color) !important;
         color: #fff !important;
     }}
     
-    .stButton > button[kind="primary"]:hover {{
+    .stButton > button[kind="primary"]:hover,
+    .stFormSubmitButton > button[kind="primaryFormSubmit"]:hover {{
         background-color: var(--accent-color) !important;
         box-shadow: 0 4px 10px var(--shadow-color-hover) !important;
     }}
