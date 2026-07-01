@@ -580,7 +580,10 @@ if st.session_state["current_page"] == "dashboard":
     @st.cache_data(ttl=60 * 60 * 12)
     def _load_nse_symbol_master() -> pd.DataFrame:
         url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
-        response = requests.get(url, timeout=30)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
         raw = pd.read_csv(StringIO(response.text))
         raw.columns = [str(c).strip().upper() for c in raw.columns]
